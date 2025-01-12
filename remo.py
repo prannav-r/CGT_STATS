@@ -253,68 +253,101 @@ def process_scorecard(image_path, is_batting):
         if path.isfile(check_path):
             with open(check_path, 'rb') as f:
                 data2 = pickle.load(f)
+                f.close()
         
 
-        for i in data:
-            if is_batting:
-                if i['runs']>=150.0:
-                    i['fpl']+=50
-            else:
-                if i['wickets']>8.0:
-                    i['fpl']+=50
-            for j in data2:
-                if i[player_key]==j[check_key]:
-                    j['fpl']=i['fpl']
-                    if is_batting:
-                        if 100<=i['runs']<200 and 4<=j['wickets']<8.0:
-                            i['fpl']=j['fpl']=i['fpl']+50
-                        elif i['runs']>=200.0 and j['wickets']>8.0:
-                            i['fpl']=j['fpl']=i['fpl']+100
-                    else:
-                        if 100<=j['runs']<200 and 4<=i['wickets']<8.0:
-                            i['fpl']=j['fpl']=i['fpl']+50
-                        elif j['runs']>=200.0 and i['wickets']>8.0:
-                            i['fpl']=j['fpl']=i['fpl']+100
+            for i in data:
+                if is_batting:
+                    if i['runs']>=150.0:
+                        i['fpl']+=50
+                else:
+                    if i['wickets']>8.0:
+                        i['fpl']+=50
+                for j in data2:
+                    if i[player_key]==j[check_key]:
+                        j['fpl']=i['fpl']
+                        if is_batting:
+                            if 100<=i['runs']<200 and 4<=j['wickets']<8.0:
+                                i['fpl']=j['fpl']=i['fpl']+50
+                            elif i['runs']>=200.0 and j['wickets']>8.0:
+                                i['fpl']=j['fpl']=i['fpl']+100
+                        else:
+                            if 100<=j['runs']<200 and 4<=i['wickets']<8.0:
+                                i['fpl']=j['fpl']=i['fpl']+50
+                            elif j['runs']>=200.0 and i['wickets']>8.0:
+                                i['fpl']=j['fpl']=i['fpl']+100
 
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            with open(check_path,'wb') as f:
+                pickle.dump(data2,f)
 
         with open(stats_file_path,'wb') as f:
             pickle.dump(data,f)
+
+        with open('fpdbs.pkl', 'rb') as fr:
+            try:
+                fdata = pickle.load(fr)
+            except EOFError:
+                fdata = []
+
+        # Modify the data
+        for i in fdata:  # Assuming fdata is a list of dictionaries
+            if is_batting:
+                for j in data:
+                    if j['batter'] in i:
+                        i[j['batter']] = j['fpl']
+                for l in data2:
+                    if l['bowler'] in i:
+                        i[l['bowler']] = l['fpl']
+            else:
+                for j in data:
+                    if j['bowler'] in i:
+                        i[j['bowler']] = j['fpl']
+                for l in data2:
+                    if l['batter'] in i:
+                        i[l['batter']] = l['fpl']
+
+        # Save modified data back to the file
+        with open('fpdbs.pkl', 'wb') as fw:
+            pickle.dump(fdata, fw) 
 
         return data
     except Exception as e:
         print(f"Error processing scorecard: {e}")
         return [], []
+
+
+def save_team(tname,players):
+    fp={}
+    fp['Team_Name']=tname
+    for i in players:
+        fp[i]=0
+    print(fp)
+    with open('fpdbs.pkl','ab') as f:
+            pickle.dump(fp,f)
+
+
+
+def display_flb():
+    fdata=[]
+    out = 'Fantasy Leaderboard :\n'
+    with open('fpdbs.pkl', 'rb') as fr:
+        try:
+            fdata.append(pickle.load(fr))
+        except EOFError:
+            pass
+    print(fdata)
+
+    for i in fdata:
+        out+="\n\n\nTeam Name :"
+        c=1
+        for j in i:
+            if c<1:
+                out+=i[j]
+                c+=1
+                break
+            out+=f"{j:<20} {i[j]}\n"
+
+    return out
 
 
 # Helper function to update stats and points table
@@ -430,6 +463,26 @@ async def on_message(message):
 
     elif message.content.startswith("!stats"):
         await message.channel.send(display_player_stats())
+
+    elif message.content.startswith("!flb"):
+        await message.channel.send(display_flb())
+
+    elif message.content.startswith("!addteam"):
+        try:
+            # Extract team from the message
+            team_string = message.content[len("!addteam "):].strip()
+            players = [player.strip() for player in team_string.split(",")]
+
+            if len(players) != 11:
+                await message.channel.send("❌ Please provide exactly 11 players, separated by commas.")
+                return
+
+            team_name = f"{message.author.name}"  # Example unique identifier per user
+            save_team(team_name, players)
+
+            await message.channel.send(f"✅ Team added successfully: {', '.join(players)}")
+        except Exception as e:
+            await message.channel.send("❌ Failed to add team. Ensure the format is correct: `!addteam <player1>,<player2>,...,<player11>`")
 
     elif message.content.startswith("!about"):
         about_text = """
