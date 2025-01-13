@@ -282,10 +282,6 @@ def process_scorecard(image_path, is_batting):
         with open(stats_file_path,'wb') as f:
             pickle.dump(data,f)
 
-        print(data)
-        print('\n')
-        print(data2)
-
         fdata=[]
         with open('fpdbs.pkl', 'rb') as fr:
             try:
@@ -293,8 +289,9 @@ def process_scorecard(image_path, is_batting):
                     fdata.append(pickle.load(fr))
             except EOFError:
                 pass
-        print(fdata)
+
         open("fpdbs.pkl", "w").close()
+
         # Modify the data
         for i in fdata:  # Assuming fdata is a list of dictionaries
             if is_batting:
@@ -314,7 +311,7 @@ def process_scorecard(image_path, is_batting):
             
             with open('fpdbs.pkl', 'ab') as fw:
                 pickle.dump(i, fw)
-        print(fdata)
+        
         return data
     
     except Exception as e:
@@ -327,6 +324,7 @@ def save_team(tname,players):
     fp['Team_Name']=tname
     for i in players:
         fp[i]=0
+    
     print(fp)
     with open('fpdbs.pkl','ab') as f:
             pickle.dump(fp,f)
@@ -335,7 +333,7 @@ def save_team(tname,players):
 
 def display_flb():
     fdata=[]
-    out = 'Fantasy Leaderboard :\n'
+    out = 'Fantasy Leaderboard :'
     with open('fpdbs.pkl', 'rb') as fr:
         try:
             while True:
@@ -344,13 +342,18 @@ def display_flb():
             pass
 
     for i in fdata:
-        out+="\n\n\nTeam Name :"
+        total=0
+        out+="\n\nTeam Name :"
         c=0
         for j in i:
             if c<1:
                 out+=i[j]
+                out+='\n'
                 c+=1
-            out+=f"{j:<20} {i[j]}\n"
+            else:
+                out+=f"{j:<20} {i[j]}\n"
+                total+=int(i[j])
+        out+=f"{"Total = "}{total}"
 
     return out
 
@@ -492,23 +495,54 @@ async def on_message(message):
             await message.channel.send("❌ Failed to add team. Ensure the format is correct: `!addteam <player1>,<player2>,...,<player11>`")
 
     elif message.content.startswith("!about"):
-        about_text = """
-        **Commands:**
+    # Create an embed message
+        embed = discord.Embed(
+            title="📋 Bot Commands",
+            description="Here is the list of commands you can use:",
+            color=discord.Color.blue()
+        )
+        
+        # Add fields for each command
+        embed.add_field(
+            name="1. `!pr` - Process the cricket match scorecard images",
+            value=(
+                "- **Batting Scorecard of an Inning**\n"
+                "  - **Syntax:** `!prb [batting scorecard attachment]`\n"
+                "- **Bowling Scorecard of an Inning**\n"
+                "  - **Syntax:** `!prf [bowling scorecard attachment]`"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="2. `!stats` - Shows Leaderboard",
+            value="**Syntax:** `!stats`",
+            inline=False
+        )
+        embed.add_field(
+            name="3. `!addteam` - Create and save a team consisting of 11 players",
+            value=(
+                "- **Syntax:** `!addteam <player1>,<player2>,<player3>,...,<player11>`\n"
+                "- `<player1>, <player2>, ... <player11>`: List of 11 player names separated by commas. Add a space after each comma."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="4. `!flb` - Show Fantasy Team Leaderboard",
+            value="**Syntax:** `!flb`",
+            inline=False
+        )
+        embed.add_field(
+            name="5. `!about` - Show this message",
+            value="Displays the list of available commands.",
+            inline=False
+        )
 
-        1. `!up` - Process the cricket match scorecard images.
-            - Batting Scorecard of an Inning  
-                - **Syntax:** `!upb [batting scorecard attachment]`
-            - Bowling Scorecard of an Inning  
-                - **Syntax:** `!upf [bowling scorecard attachment]`
-           
-        2. `!stats` - Shows Leaderboard  
-           - **Syntax:** `!stats`
+        # Footer with developer credit
+        embed.set_footer(text="Developed by PR 😉")
 
-        3. `!about` - Show this message.
+        # Send the embed message
+        await message.channel.send(embed=embed)
 
-        **Developed by PR ;)**
-        """
-        await message.channel.send(about_text)
 
 # Run the bot
 client.run("MTMyNjE5MDEyNDg1MzM2Njc4NA.Geyvif.NxvS2-qZbSSfdMJyhK5-IMLF3Ci5YuUrWTjX-8")
