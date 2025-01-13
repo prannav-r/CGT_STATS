@@ -1,1 +1,17 @@
-[{'tname': 'prannav_r', 'YASHASVI JAISWAL': 0, 'RAHMANULLAH GURBAZ': 0, 'WILL JACKS': 0, 'RISHABH PANT': 0, 'MARCUS STOINIS': 0, 'JAMES VINCE': 0, 'RINKU SINGH': 0, 'LEO DAS': 0, 'WASHINGTON SUNDAR': 0, 'KYLE JAMIESON': 0, 'ALANA KING': 0}, {'tname': 'pogsv2', 'YASHASVI JAISWAL': 0, 'RAHMANULLAH GURBAZ': 0, 'WILL JACKS': 0, 'RISHABH PANT': 0, 'MARCUS STOINIS': 0, 'JAMES VINCE': 0, 'RINKU SINGH': 0, 'LEO DAS': 0, 'WASHINGTON SUNDAR': 0, 'KYLE JAMIESON': 0, 'ALANA KING': 0}, [{'tname': 'prannav_r', 'YASHASVI JAISWAL': 0, 'RAHMANULLAH GURBAZ': 0, 'WILL JACKS': 0, 'RISHABH PANT': 0, 'MARCUS STOINIS': 0, 'JAMES VINCE': 0, 'RINKU SINGH': 0, 'LEO DAS': 0, 'WASHINGTON SUNDAR': 0, 'KYLE JAMIESON': 0, 'ALANA KING': 0}, {'tname': 'pogsv2', 'YASHASVI JAISWAL': 0, 'RAHMANULLAH GURBAZ': 0, 'WILL JACKS': 0, 'RISHABH PANT': 0, 'MARCUS STOINIS': 0, 'JAMES VINCE': 0, 'RINKU SINGH': 0, 'LEO DAS': 0, 'WASHINGTON SUNDAR': 0, 'KYLE JAMIESON': 0, 'ALANA KING': 0}]]
+import pickle
+
+
+fp={1,2,3,4,5}
+with open('fpdbs.pkl','ab') as f:
+        pickle.dump(fp,f)
+
+
+fdata=[]
+with open('fpdbs.pkl', 'rb') as fr:
+        try:
+            while True:
+                fdata.append(pickle.load(fr))
+        except EOFError:
+            pass
+
+print(fdata)

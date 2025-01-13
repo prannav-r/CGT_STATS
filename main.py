@@ -247,7 +247,6 @@ def process_scorecard(image_path, is_batting):
             else:
                 data.append(val)
         
-        print(data)
 
         data2=[]
         if path.isfile(check_path):
@@ -283,12 +282,19 @@ def process_scorecard(image_path, is_batting):
         with open(stats_file_path,'wb') as f:
             pickle.dump(data,f)
 
+        print(data)
+        print('\n')
+        print(data2)
+
+        fdata=[]
         with open('fpdbs.pkl', 'rb') as fr:
             try:
-                fdata = pickle.load(fr)
+                while True:
+                    fdata.append(pickle.load(fr))
             except EOFError:
-                fdata = []
-
+                pass
+        print(fdata)
+        open("fpdbs.pkl", "w").close()
         # Modify the data
         for i in fdata:  # Assuming fdata is a list of dictionaries
             if is_batting:
@@ -305,12 +311,12 @@ def process_scorecard(image_path, is_batting):
                 for l in data2:
                     if l['batter'] in i:
                         i[l['batter']] = l['fpl']
-
-        # Save modified data back to the file
-        with open('fpdbs.pkl', 'wb') as fw:
-            pickle.dump(fdata, fw) 
-
+            
+            with open('fpdbs.pkl', 'ab') as fw:
+                pickle.dump(i, fw)
+        print(fdata)
         return data
+    
     except Exception as e:
         print(f"Error processing scorecard: {e}")
         return [], []
@@ -332,19 +338,18 @@ def display_flb():
     out = 'Fantasy Leaderboard :\n'
     with open('fpdbs.pkl', 'rb') as fr:
         try:
-            fdata.append(pickle.load(fr))
+            while True:
+                fdata.append(pickle.load(fr))
         except EOFError:
             pass
-    print(fdata)
 
     for i in fdata:
         out+="\n\n\nTeam Name :"
-        c=1
+        c=0
         for j in i:
             if c<1:
                 out+=i[j]
                 c+=1
-                break
             out+=f"{j:<20} {i[j]}\n"
 
     return out
@@ -381,7 +386,7 @@ def display_player_stats():
         try:
             if count>10:
                 break
-            out+=f"{i['batter']:<40} {int(i['runs']):<20} {round(i['runs']*100/i['balls'],2):<20} {i['fpl']}\n"
+            out+=f"{i['batter']:<40} {int(i['runs']):<20} {round(i['runs']*100/i['balls'],2):<5} {i['fpl']}\n"
             count+=1
         except:
             count+=1
@@ -392,7 +397,7 @@ def display_player_stats():
     for i in sorted(bowling_data,reverse=True,key=lambda x:x['wickets']):
         if count>10:
             break
-        out+=f"{i['bowler']:<40} {int(i['wickets']):<20} {round((i['runs']*6)/((int(i['overs'])*6)+(int((i['overs'] % 1) * 10))),2):<20}  {i['fpl']}\n"
+        out+=f"{i['bowler']:<40} {int(i['wickets']):<5} {round((i['runs']*6)/((int(i['overs'])*6)+(int((i['overs'] % 1) * 10))),2):<5}  {i['fpl']}\n"
         count+=1
     
     return out
@@ -470,8 +475,10 @@ async def on_message(message):
     elif message.content.startswith("!addteam"):
         try:
             # Extract team from the message
+            players=[]
             team_string = message.content[len("!addteam "):].strip()
-            players = [player.strip() for player in team_string.split(",")]
+            for player in team_string.split(","):
+                players.append(player)
 
             if len(players) != 11:
                 await message.channel.send("❌ Please provide exactly 11 players, separated by commas.")
