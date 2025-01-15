@@ -128,42 +128,44 @@ def get_batter_from_str(line):
             continue
         curr_data[last_flag] = word+' ' if last_flag not in curr_data else curr_data[last_flag]+word+' '
 
-    curr_data['fpl'] = 0
+    curr_data['batting_fpl'] = 0  # Changed to batting_fpl
+    curr_data['fpl'] = 0  # Keep total fpl for compatibility
 
     # Calculate fantasy points
     runs = curr_data.get('runs', 0)
     balls = curr_data.get('balls', 0)
 
     # Points for runs
-    curr_data['fpl'] += runs
+    curr_data['batting_fpl'] += runs
 
     # Strike rate calculation and bonus
     if balls >= 10:  # Strike rate bonus only applies if balls faced >= 10
         strike_rate = (runs / balls) * 100 if balls > 0 else 0
         if 50 <= strike_rate < 75:
-            curr_data['fpl'] -= 2
+            curr_data['batting_fpl'] -= 2
         elif 140 <= strike_rate < 180:
-            curr_data['fpl'] += 5
+            curr_data['batting_fpl'] += 5
         elif strike_rate >= 180:
-            curr_data['fpl'] += 10
+            curr_data['batting_fpl'] += 10
 
     # Milestone bonuses
     if runs >= 50.0:
-        curr_data['fpl'] += 10
+        curr_data['batting_fpl'] += 10
     if runs >= 100.0:
-        curr_data['fpl'] += 25
+        curr_data['batting_fpl'] += 25
+        
+    curr_data['fpl'] = curr_data['batting_fpl']  # Set total fpl to batting points
 
     return curr_data
 
 def update_batter_stats(prev, curr):
-    for i in ('runs','balls','fpl'):
+    for i in ('runs', 'balls'):
         prev[i] += curr[i]
+    # Update batting FPL separately
+    prev['batting_fpl'] = curr['batting_fpl']  # Use the new batting points
+    prev['fpl'] = prev.get('bowling_fpl', 0) + prev['batting_fpl']  # Total = bowling + batting
     return prev
 
-def update_bowler_stats(prev, curr):
-    for i in ('overs','maidens','runs','wickets','fpl'):
-        prev[i] += curr[i]
-    return prev
 
 def get_bowler_from_str(line):
     if not line.strip():
@@ -184,38 +186,49 @@ def get_bowler_from_str(line):
             continue
         curr_data[last_flag] = word+' ' if last_flag not in curr_data else curr_data[last_flag]+word+' '
 
-    curr_data['fpl'] = 0
+    curr_data['bowling_fpl'] = 0  # Changed to bowling_fpl
+    curr_data['fpl'] = 0  # Keep total fpl for compatibility
+    
     # Calculate fantasy points
     wickets = curr_data.get('wickets', 0)
     maidens = curr_data.get('maidens', 0)
     overs = curr_data.get('overs', 0)
     runs = curr_data.get('runs', 0)
+    
     # Points for wickets
-    curr_data['fpl'] += wickets * 25
+    curr_data['bowling_fpl'] += wickets * 25
     
     # Bonus for 5-wicket haul
     if wickets >= 5:
-        curr_data['fpl'] += 25
+        curr_data['bowling_fpl'] += 25
     
     # Points for maidens
-    curr_data['fpl'] += maidens * 10
+    curr_data['bowling_fpl'] += maidens * 10
     
     # Economy rate and bonus points (only if bowled at least 2 overs)
     if overs >= 2:
         economy_rate = runs / overs
         if economy_rate < 5.0:
-            curr_data['fpl'] += 15
+            curr_data['bowling_fpl'] += 15
         elif economy_rate < 6.5:
-            curr_data['fpl'] += 10
+            curr_data['bowling_fpl'] += 10
         elif economy_rate < 11.0:
-            curr_data['fpl'] += 5
+            curr_data['bowling_fpl'] += 5
         elif economy_rate < 14.0:
-            curr_data['fpl'] += 0  # No points, explicitly mentioned for clarity
+            curr_data['bowling_fpl'] += 0
         else:
-            curr_data['fpl'] -= 5  # Penalty for economy above 14
+            curr_data['bowling_fpl'] -= 5
 
-
+    curr_data['fpl'] = curr_data['bowling_fpl']  # Set total fpl to bowling points
     return curr_data
+
+def update_bowler_stats(prev, curr):
+    for i in ('overs', 'maidens', 'runs', 'wickets'):
+        prev[i] += curr[i]
+    # Update bowling FPL separately
+    prev['bowling_fpl'] = curr['bowling_fpl']  # Use the new bowling points
+    prev['fpl'] = prev.get('batting_fpl', 0) + prev['bowling_fpl']  # Total = batting + bowling
+    return prev
 
 # Helper function to process a scorecard with layout analysis and OCR
 def process_scorecard(image_path, is_batting):
@@ -225,92 +238,115 @@ def process_scorecard(image_path, is_batting):
     check_key = 'bowler' if is_batting else 'batter'
     try:
         text = get_normalized_ocr_read(image_path)
-
         lines = text.strip().split("\n")
-
         data = []
 
+        # Load existing stats
         if path.isfile(stats_file_path):
             with open(stats_file_path, 'rb') as f:
                 data = pickle.load(f)
         
+        # Process new scorecard data
+        new_entries = []
         for line in lines:
-            val=(get_batter_from_str if is_batting else get_bowler_from_str)(line)
+            val = (get_batter_from_str if is_batting else get_bowler_from_str)(line)
             if not val:
                 continue
-            
-            for i in range(len(data)):
-                if data[i][player_key] != val[player_key]:
-                    continue
-                data[i] = (update_batter_stats if is_batting else update_bowler_stats)(data[i], val)
-                break            
-            else:
-                data.append(val)
-        
+            new_entries.append(val)
 
-        data2=[]
+        # Update existing entries or add new ones
+        for new_entry in new_entries:
+            found = False
+            for i in range(len(data)):
+                if data[i][player_key].strip() == new_entry[player_key].strip():
+                    data[i] = (update_batter_stats if is_batting else update_bowler_stats)(data[i], new_entry)
+                    found = True
+                    break
+            if not found:
+                data.append(new_entry)
+
+        # Load complementary stats (bowling if batting, batting if bowling)
+        complementary_data = []
         if path.isfile(check_path):
             with open(check_path, 'rb') as f:
-                data2 = pickle.load(f)
-                f.close()
-        
+                complementary_data = pickle.load(f)
 
-            for i in data:
-                if is_batting:
-                    if i['runs']>=150.0:
-                        i['fpl']+=50
-                else:
-                    if i['wickets']>8.0:
-                        i['fpl']+=50
-                for j in data2:
-                    if i[player_key]==j[check_key]:
-                        j['fpl']=i['fpl']
-                        if is_batting:
-                            if 100<=i['runs']<200 and 4<=j['wickets']<8.0:
-                                i['fpl']=j['fpl']=i['fpl']+50
-                            elif i['runs']>=200.0 and j['wickets']>8.0:
-                                i['fpl']=j['fpl']=i['fpl']+100
+        # Calculate bonus points
+        for player_stat in data:
+            # Individual achievement bonuses
+            if is_batting:
+                if player_stat['runs'] >= 150.0:
+                    player_stat['fpl'] += 50
+            else:
+                if player_stat['wickets'] > 8.0:
+                    player_stat['fpl'] += 50
+
+            # Combined achievement bonuses
+            for comp_stat in complementary_data:
+                if player_stat[player_key].strip() == comp_stat[check_key].strip():
+                    # Store original FPL before applying combined bonuses
+                    base_fpl = player_stat['fpl']
+                    
+                    if is_batting:
+                        if 100 <= player_stat['runs'] < 200 and 4 <= comp_stat['wickets'] < 8.0:
+                            bonus = 50
+                        elif player_stat['runs'] >= 200.0 and comp_stat['wickets'] > 8.0:
+                            bonus = 100
                         else:
-                            if 100<=j['runs']<200 and 4<=i['wickets']<8.0:
-                                i['fpl']=j['fpl']=i['fpl']+50
-                            elif j['runs']>=200.0 and i['wickets']>8.0:
-                                i['fpl']=j['fpl']=i['fpl']+100
+                            bonus = 0
+                    else:
+                        if 100 <= comp_stat['runs'] < 200 and 4 <= player_stat['wickets'] < 8.0:
+                            bonus = 50
+                        elif comp_stat['runs'] >= 200.0 and player_stat['wickets'] > 8.0:
+                            bonus = 100
+                        else:
+                            bonus = 0
+                    
+                    # Apply bonus to both records
+                    player_stat['fpl'] = base_fpl + bonus
+                    comp_stat['fpl'] = base_fpl + bonus
 
-            with open(check_path,'wb') as f:
-                pickle.dump(data2,f)
+        # Save complementary data back
+        if complementary_data:
+            with open(check_path, 'wb') as f:
+                pickle.dump(complementary_data, f)
 
-            fdata=[]
+        # Update fantasy team database
+        fantasy_teams = []
+        try:
             with open('fpdbs.pkl', 'rb') as fr:
-                try:
-                    while True:
-                        fdata.append(pickle.load(fr))
-                except EOFError:
-                    pass
+                while True:
+                    try:
+                        fantasy_teams.append(pickle.load(fr))
+                    except EOFError:
+                        break
+        except FileNotFoundError:
+            fantasy_teams = []
 
-            open("fpdbs.pkl", "w").close()
+        # Clear and update fantasy points database
+        open("fpdbs.pkl", "w").close()
 
-            # Modify the data
-            for i in fdata:  # Assuming fdata is a list of dictionaries
-                if is_batting:
-                    for j in data:
-                        if j['batter'] in i:
-                            i[j['batter']] = j['fpl']
-                    for l in data2:
-                        if l['bowler'] in i:
-                            i[l['bowler']] = l['fpl']
-                else:
-                    for j in data:
-                        if j['bowler'] in i:
-                            i[j['bowler']] = j['fpl']
-                    for l in data2:
-                        if l['batter'] in i:
-                            i[l['batter']] = l['fpl']
-                
-                with open('fpdbs.pkl', 'ab') as fw:
-                    pickle.dump(i, fw)
+        # Update fantasy points for all teams
+        for team in fantasy_teams:
+            for player_name in team:
+                if player_name == 'Team_Name':
+                    continue
+                # Look for player in both batting and bowling data
+                for player_stat in data:
+                    if player_name.strip() == player_stat[player_key].strip():
+                        team[player_name] = player_stat['fpl']
+                for comp_stat in complementary_data:
+                    if player_name.strip() == comp_stat[check_key].strip():
+                        team[player_name] = comp_stat['fpl']
 
-        with open(stats_file_path,'wb') as f:
-            pickle.dump(data,f)
+        # Save updated fantasy teams
+        with open('fpdbs.pkl', 'ab') as fw:
+            for team in fantasy_teams:
+                pickle.dump(team, fw)
+
+        # Save main stats
+        with open(stats_file_path, 'wb') as f:
+            pickle.dump(data, f)
         
         return data
     
@@ -318,43 +354,106 @@ def process_scorecard(image_path, is_batting):
         print(f"Error processing scorecard: {e}")
         return [], []
 
-
-def save_team(tname,players):
-    fp={}
-    fp['Team_Name']=tname
-    for i in players:
-        fp[i]=0
+def save_team(tname, players):
+    team = {'Team_Name': tname}
     
-    print(fp)
-    with open('fpdbs.pkl','ab') as f:
-            pickle.dump(fp,f)
+    # Initialize points from current stats
+    batting_data = []
+    if path.isfile("b_stats.pkl"):
+        with open('b_stats.pkl', 'rb') as f:
+            batting_data = pickle.load(f)
+            
+    bowling_data = []
+    if path.isfile("f_stats.pkl"):
+        with open('f_stats.pkl', 'rb') as f:
+            bowling_data = pickle.load(f)
+    
+    # Create points dictionary
+    player_points = {}
+    for player in batting_data:
+        player_points[player['batter'].strip()] = player['fpl']
+    for player in bowling_data:
+        player_points[player['bowler'].strip()] = player['fpl']
+    
+    # Add players with their current points
+    for player in players:
+        team[player] = player_points.get(player.strip(), 0)
+    
+    # Save to file
+    with open('fpdbs.pkl', 'ab') as f:
+        pickle.dump(team, f)
 
 
 
 def display_flb():
-    fdata=[]
-    out = 'Fantasy Leaderboard :'
-    with open('fpdbs.pkl', 'rb') as fr:
-        try:
+    # Read batting stats
+    batting_data = []
+    if path.isfile("b_stats.pkl"):
+        with open('b_stats.pkl', 'rb') as f:
+            batting_data = pickle.load(f)
+    
+    # Read bowling stats
+    bowling_data = []
+    if path.isfile("f_stats.pkl"):
+        with open('f_stats.pkl', 'rb') as f:
+            bowling_data = pickle.load(f)
+    
+    # Create a player points dictionary
+    player_points = {}
+    
+    # Add batting points
+    for player in batting_data:
+        player_name = player['batter'].strip()
+        player_points[player_name] = player_points.get(player_name, 0) + player.get('batting_fpl', 0)
+    
+    # Add bowling points
+    for player in bowling_data:
+        player_name = player['bowler'].strip()
+        player_points[player_name] = player_points.get(player_name, 0) + player.get('bowling_fpl', 0)
+    
+    # Read fantasy teams
+    fantasy_teams = []
+    try:
+        with open('fpdbs.pkl', 'rb') as fr:
             while True:
-                fdata.append(pickle.load(fr))
-        except EOFError:
-            pass
+                try:
+                    fantasy_teams.append(pickle.load(fr))
+                except EOFError:
+                    break
+    except FileNotFoundError:
+        return "No fantasy teams found."
+    
+    lb={}
 
-    for i in fdata:
-        total=0
-        out+="\n\nTeam Name :"
-        c=0
-        for j in i:
-            if c<1:
-                out+=i[j]
-                out+='\n'
-                c+=1
-            else:
-                out+=f"{j:<20} {i[j]}\n"
-                total+=int(i[j])
-        out+=f"{"Total = "}{total}"
+    # Build output string
+    out = 'Fantasy Points:\n\n'
+    
+    # Process each team
+    for team in fantasy_teams:
+        total = 0
+        lb[team['Team_Name']] = total
+        out += f"Team Name: {team['Team_Name']}\n"
+        
+        # Process each player in team
+        for player_name, _ in team.items():
+            if player_name == 'Team_Name':
+                continue
+            
+            # Get player's total points (batting + bowling)
+            points = player_points.get(player_name.strip(), 0)
+            out += f"{player_name:<20} {points}\n"
+            total += points
+        
+        out += f"Total = {total}\n\n"
+        lb[team['Team_Name']] = total
 
+    mk=list(lb.keys())
+    mk.sort(reverse=True)
+    sd={i:lb[i]for i in mk}
+    out+="Fantasy Leaderboard\n\n"
+    for j in sd:
+        out+=f"Team Name : {j:<10} Fantasy Points = {sd[j]}\n\n"
+    
     return out
 
 
@@ -383,25 +482,42 @@ def display_player_stats():
         with open('f_stats.pkl', 'rb') as f:
             bowling_data = pickle.load(f)
     
+    # Create a player points dictionary to keep track of total points
+    player_points = {}
+    
+    # Add batting points
+    for player in batting_data:
+        player_name = player['batter'].strip()
+        player_points[player_name] = player_points.get(player_name, 0) + player.get('batting_fpl', 0)
+    
+    # Add bowling points
+    for player in bowling_data:
+        player_name = player['bowler'].strip()
+        player_points[player_name] = player_points.get(player_name, 0) + player.get('bowling_fpl', 0)
+    
     count = 1
     out = "Most Runs:\n"
-    for i in sorted(batting_data,reverse=True,key=lambda x:x['runs']):
+    for i in sorted(batting_data, reverse=True, key=lambda x: x['runs']):
         try:
-            if count>10:
+            if count > 10:
                 break
-            out+=f"{i['batter']:<40} {int(i['runs']):<20} {round(i['runs']*100/i['balls'],2):<5} {i['fpl']}\n"
-            count+=1
+            player_name = i['batter'].strip()
+            total_points = player_points.get(player_name, 0)  # Get total points including both batting and bowling
+            out += f"{player_name:<40} {int(i['runs']):<10} {round(i['runs']*100/i['balls'],2):<10} {total_points}\n"
+            count += 1
         except:
-            count+=1
+            count += 1
             break
 
     count = 1
     out += "\nMost Wickets:\n"
-    for i in sorted(bowling_data,reverse=True,key=lambda x:x['wickets']):
-        if count>10:
+    for i in sorted(bowling_data, reverse=True, key=lambda x: x['wickets']):
+        if count > 10:
             break
-        out+=f"{i['bowler']:<40} {int(i['wickets']):<5} {round((i['runs']*6)/((int(i['overs'])*6)+(int((i['overs'] % 1) * 10))),2):<5}  {i['fpl']}\n"
-        count+=1
+        player_name = i['bowler'].strip()
+        total_points = player_points.get(player_name, 0)  # Get total points including both batting and bowling
+        out += f"{player_name:<40} {int(i['wickets']):<10} {round((i['runs']*6)/((int(i['overs'])*6)+(int((i['overs'] % 1) * 10))),2):<10}  {total_points}\n"
+        count += 1
     
     return out
         
