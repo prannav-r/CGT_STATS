@@ -536,4 +536,4 @@ async def on_message(message):
 
 
 # Run the bot
-#client.run("MTMyNjE5MDEyNDg1MzM2Njc4NA.Geyvif.NxvS2-qZbSSfdMJyhK5-IMLF3Ci5YuUrWTjX-8")
+#Paste discord token to run bot.
