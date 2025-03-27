@@ -23,6 +23,7 @@ client = discord.Client(intents=intents)
 # File paths for points table and player stats
 POINTS_TABLE_FILE = "points_table.json"
 PLAYER_STATS_FILE = "player_stats.json"
+DREAM11_POINTS_FILE = "dream11_points.pkl"
 
 # Load or initialize points table
 try:
@@ -41,6 +42,19 @@ try:
 except FileNotFoundError:
     player_stats = {}
 
+# Load or initialize Dream11 points
+try:
+    with open(DREAM11_POINTS_FILE, 'rb') as f:
+        dream11_points = pickle.load(f)
+except FileNotFoundError:
+    dream11_points = {}
+
+# Load or initialize Dream11 history
+try:
+    with open('dream11_history.pkl', 'rb') as f:
+        dream11_history = pickle.load(f)
+except FileNotFoundError:
+    dream11_history = []
 
 def get_normalized_ocr_read(image_path):
     image = Image.open(image_path)
@@ -419,6 +433,68 @@ def display_player_stats():
     
     return out
 
+def update_dream11_points(user, points_change):
+    """Update Dream11 points for a user"""
+    global dream11_points, dream11_history
+    
+    # Initialize user points if not exists
+    if user not in dream11_points:
+        dream11_points[user] = 0
+    
+    # Update points
+    dream11_points[user] += points_change
+    
+    # Record history
+    dream11_history.append({
+        'user': user,
+        'points_change': points_change,
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    })
+    
+    # Save updated data
+    with open(DREAM11_POINTS_FILE, 'wb') as f:
+        pickle.dump(dream11_points, f)
+    with open('dream11_history.pkl', 'wb') as f:
+        pickle.dump(dream11_history, f)
+
+def undo_last_dream11_point():
+    """Undo the last Dream11 point change"""
+    global dream11_points, dream11_history
+    
+    if not dream11_history:
+        return False, "No points to undo"
+    
+    # Get last change
+    last_change = dream11_history.pop()
+    user = last_change['user']
+    points_change = last_change['points_change']
+    
+    # Revert points
+    dream11_points[user] -= points_change
+    
+    # Save updated data
+    with open(DREAM11_POINTS_FILE, 'wb') as f:
+        pickle.dump(dream11_points, f)
+    with open('dream11_history.pkl', 'wb') as f:
+        pickle.dump(dream11_history, f)
+    
+    return True, f"Undid {points_change} point(s) for {user}"
+
+def display_dream11_leaderboard():
+    """Display Dream11 leaderboard"""
+    if not dream11_points:
+        return "No points recorded yet!"
+    
+    # Sort users by points
+    sorted_users = sorted(dream11_points.items(), key=lambda x: x[1], reverse=True)
+    
+    # Create leaderboard message
+    leaderboard = "🏆 Dream11 Leaderboard 🏆\n\n"
+    for rank, (user, points) in enumerate(sorted_users, 1):
+        leaderboard += f"{rank}. {user}: {points} point(s)\n"
+    
+    return leaderboard
+
 # Discord bot events
 @client.event
 async def on_ready():
@@ -429,7 +505,33 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-    if message.content.startswith("!pr"):
+    if message.content.startswith("!win"):
+        try:
+            # Extract username from command
+            username = message.content[len("!win "):].strip()
+            if not username:
+                await message.channel.send("❌ Please specify a username: `!win <username>`")
+                return
+            
+            # Update points
+            update_dream11_points(username, 1)
+            await message.channel.send(f"✅ Added 1 point to {username}")
+            
+        except Exception as e:
+            await message.channel.send(f"❌ Error updating points: {str(e)}")
+
+    elif message.content.startswith("!d11"):
+        leaderboard = display_dream11_leaderboard()
+        await message.channel.send(leaderboard)
+
+    elif message.content.startswith("!undo"):
+        success, message_text = undo_last_dream11_point()
+        if success:
+            await message.channel.send(f"✅ {message_text}")
+        else:
+            await message.channel.send(f"❌ {message_text}")
+
+    elif message.content.startswith("!pr"):
         # if len(message.attachments) < 2:
         #     await message.channel.send("❌ Please upload **both innings scorecard images** to process the match.")
         #     return
@@ -523,7 +625,16 @@ async def on_message(message):
             inline=False
         )
         embed.add_field(
-            name="5. `!about` - Show this message",
+            name="5. Dream11 Commands",
+            value=(
+                "- `!win <username>` - Add 1 point to a user\n"
+                "- `!d11` - Show Dream11 leaderboard\n"
+                "- `!undo` - Undo last point change"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="6. `!about` - Show this message",
             value="Displays the list of available commands.",
             inline=False
         )
@@ -536,4 +647,5 @@ async def on_message(message):
 
 
 # Run the bot
+client.run("MTMyNjE5MDEyNDg1MzM2Njc4NA.GDRo4s.W8IZBtWSSvYTwaY-wnDtqVdjz3WZ_C7phic2Kw")
 #Paste discord token to run bot.
